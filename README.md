@@ -1,12 +1,14 @@
 # Pre-Reasoning Engine
 
-**0-param deterministic pre-reasoning for any LLM.** Surfaces hidden structure — root blockers, dependency chains, conflicts, constraints — in ambiguous problems before any model speaks.
+**Humanly Grounded decisions for any LLM.** You love working with your AI — give it humanly grounding to make decisions that just make sense.
+
+0-param deterministic pre-reasoning that surfaces hidden structure — root blockers, dependency chains, conflicts, constraints — in ambiguous problems before any model speaks.
 
 Built by [Mia Labs](https://mia-labs.com).
 
 ## What It Does
 
-You describe an ambiguous problem in plain text. The engine analyzes structural dependencies and returns:
+You describe an ambiguous problem in plain text. The pre-reasoning engine analyzes structural dependencies and returns:
 
 - **ROOT BLOCKERS** — what must be resolved first (highest impact)
 - **UNLOCK SEQUENCE** — optimal order to address issues
@@ -14,7 +16,7 @@ You describe an ambiguous problem in plain text. The engine analyzes structural 
 - **CONFLICTS** — competing positions that need resolution
 - **CIRCULAR DEPENDENCIES** — deadlocks detected via Tarjan's SCC
 
-The engine uses **zero ML parameters**. It's pure algorithm — deterministic, fast (<100ms), and model-agnostic.
+The engine uses **zero ML parameters**. It's pure algorithm — deterministic, fast (<100ms), and model-agnostic. When it finds enough structure, it reports the trace as **Humanly Grounded** — the full structural picture a human expert would surface.
 
 ## Why It Works
 
@@ -41,46 +43,46 @@ Full analysis: [WHY_TRACES_WORK.md](docs/WHY_TRACES_WORK.md)
 
 ```bash
 # POST /analyze — send problem, get trace
-curl -X POST https://mia-labs.com/api/engine/analyze \
+curl -X POST https://www.mia-labs.com/api/engine/analyze \
   -H "Content-Type: application/json" \
   -d '{"text": "Frontend depends on API gateway. API gateway depends on Auth. The CTO wants microservices but the senior dev warns about complexity. We have a team of 5 and a deadline of 8 weeks."}'
 
 # GET /submit — URL-based (no POST needed, any browser/model can use)
-curl "https://mia-labs.com/api/engine/submit?text=Frontend+depends+on+API.+CTO+wants+microservices+but+senior+dev+warns+about+complexity."
+curl "https://www.mia-labs.com/api/engine/submit?text=Frontend+depends+on+API.+CTO+wants+microservices+but+senior+dev+warns+about+complexity."
 
 # GET /recover/{id} — retrieve results
-curl "https://mia-labs.com/api/engine/recover/abc12345"
+curl "https://www.mia-labs.com/api/engine/recover/abc12345"
 ```
 
-### Option 2: MCP (Claude Desktop, Claude Web, Cursor, Windsurf)
+### Option 2: MCP (Claude Web, Claude Desktop, Cursor, Windsurf)
 
-Connect any MCP-compatible client to the remote SSE endpoint:
+Connect any MCP-compatible client to the Streamable HTTP endpoint:
 
 ```
-URL: https://mia-labs.com/api/engine/mcp
+URL: https://www.mia-labs.com/api/engine/mcp
+```
+
+**Claude Web** — go to Settings > Connectors > Add Custom Connector:
+```
+Name: Mia Labs Pre-Reasoning Engine
+URL: https://www.mia-labs.com/api/engine/mcp
 ```
 
 **Claude Desktop** — add to `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "mia-reasoning-engine": {
-      "transport": "sse",
-      "url": "https://mia-labs.com/api/engine/mcp"
+    "mia-pre-reasoning": {
+      "transport": "streamable-http",
+      "url": "https://www.mia-labs.com/api/engine/mcp"
     }
   }
 }
 ```
 
-**Claude Web** — go to Settings > Connectors > Add Custom Connector:
-```
-Name: Mia Labs Reasoning Engine
-URL: https://mia-labs.com/api/engine/mcp
-```
-
 **Claude Code CLI**:
 ```bash
-claude mcp add --transport http mia-reasoning-engine https://mia-labs.com/api/engine/mcp
+claude mcp add --transport http mia-pre-reasoning https://www.mia-labs.com/api/engine/mcp
 ```
 
 ### Option 3: Claude Code Skill
@@ -88,8 +90,8 @@ claude mcp add --transport http mia-reasoning-engine https://mia-labs.com/api/en
 Copy the [skill/](skill/) directory to `~/.claude/skills/pre-reasoning/` and add to your CLAUDE.md:
 
 ```
-REASONING ENGINE (eat our own food):
-On each turn, DECIDE whether to run the reasoning engine before responding.
+PRE-REASONING ENGINE:
+On each turn, DECIDE whether to run the pre-reasoning engine before responding.
 USE IT when: planning, strategic decisions, complex multi-part problems.
 SKIP when: follow-up questions, confirmations, quick file ops.
 ```
@@ -97,7 +99,7 @@ SKIP when: follow-up questions, confirmations, quick file ops.
 ### Option 4: Direct Python (pip install)
 
 ```bash
-pip install reasoning-engine
+pip install pre-reasoning-engine
 ```
 
 ```python
@@ -153,7 +155,7 @@ The engine reports how much structure it found:
 | `grounding` | Trace orders what's visible. Simple deps, 1-2 blocks. |
 | `enhancing` | Trace adds meaningful structure. Chains, constraints, or conflicts. |
 | `unlocking` | Trace reveals hidden deps the model would miss. Root blockers, cycles, deep chains. |
-| `humanly_grounded` | Full structural picture. Dependencies + conflicts + constraints. |
+| `humanly_grounded` | **Humanly Grounded.** Full structural picture. Dependencies + conflicts + constraints — the level a human expert would reach. |
 
 ## Benchmarks
 

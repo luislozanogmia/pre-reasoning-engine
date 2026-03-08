@@ -68,7 +68,7 @@ Results can be reproduced using the hosted API:
 
 ```bash
 # Get a trace for any problem
-curl -X POST https://mia-labs.com/api/engine/analyze \
+curl -X POST https://www.mia-labs.com/api/engine/analyze \
   -H "Content-Type: application/json" \
   -d '{"text": "YOUR PROBLEM DESCRIPTION"}'
 

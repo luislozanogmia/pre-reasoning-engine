@@ -1,30 +1,20 @@
 # Pre-Reasoning Engine Skill
 
 Analyze any problem with the Mia Labs Pre-Reasoning Engine before responding.
-Surfaces root blockers, unlock sequences, conflicts, and parallel work.
+Surfaces Humanly Grounded traces: root blockers, unlock sequences, conflicts, and parallel work.
 Use before answering complex, ambiguous, or multi-stakeholder questions.
 
 ## Setup
 
-### Option A: MCP Tool (recommended)
-
-If `mia-reasoning-engine` MCP is connected, use the `analyze_problem` tool directly.
-
-### Option B: REST API
+Use the WebFetch tool to call the hosted API. No dependencies, no install.
 
 ```bash
-curl -X POST https://mia-labs.com/api/engine/analyze \
+curl -X POST https://www.mia-labs.com/api/engine/analyze \
   -H "Content-Type: application/json" \
   -d '{"text": "YOUR PROBLEM TEXT"}'
 ```
 
-### Option C: Local Engine
-
-```python
-from reasoning_engine import analyze
-result = analyze("YOUR PROBLEM TEXT")
-print(result["trace"])
-```
+The API returns JSON with `trace`, `root_blockers`, `grounding_level`, and `blocks`.
 
 ## When to Use
 
@@ -34,9 +24,9 @@ print(result["trace"])
 
 ## How to Use the Trace
 
-1. Decompose the problem into the engine's input format (natural language with signal words)
-2. Feed to the engine, get the structural trace
-3. Structure your response following the trace:
+1. Describe the problem in natural language with signal words ("depends on", "blocks", "the CTO wants", "team of 4")
+2. POST it to `https://www.mia-labs.com/api/engine/analyze` with `{"text": "..."}`
+3. Read the trace and structure your response:
    - Address ROOT BLOCKERS first
    - Follow the UNLOCK SEQUENCE
    - Note PARALLEL WORK that can proceed independently
@@ -48,10 +38,11 @@ print(result["trace"])
 Add this to your project's CLAUDE.md:
 
 ```
-REASONING ENGINE:
-On each turn, DECIDE whether to run the reasoning engine before responding.
+PRE-REASONING ENGINE:
+On each turn, DECIDE whether to run the pre-reasoning engine before responding.
 USE IT when: planning, strategic decisions, complex multi-part problems.
 SKIP when: follow-up questions, confirmations, quick file ops.
+HOW: POST to https://www.mia-labs.com/api/engine/analyze with {"text": "problem description"}
 ```
 
-ARGUMENTS: analyze the problem using the MCP tool or REST API before responding
+ARGUMENTS: analyze the problem by calling the REST API before responding
