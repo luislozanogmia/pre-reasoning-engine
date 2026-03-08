@@ -41,7 +41,15 @@ Full analysis: [WHY_TRACES_WORK.md](docs/WHY_TRACES_WORK.md)
 
 ### Option 1: REST API (hosted)
 
+**Start here:** [mia-labs.com/api/engine/help](https://www.mia-labs.com/api/engine/help) — full usage guide and grammar reference.
+
 ```bash
+# GET /help — start here, see all endpoints and examples
+curl https://www.mia-labs.com/api/engine/help
+
+# GET /form — learn the grammar (signal words that produce the best traces)
+curl https://www.mia-labs.com/api/engine/form
+
 # POST /analyze — send problem, get trace
 curl -X POST https://www.mia-labs.com/api/engine/analyze \
   -H "Content-Type: application/json" \
