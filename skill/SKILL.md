@@ -22,6 +22,18 @@ The API returns JSON with `trace`, `root_blockers`, `grounding_level`, and `bloc
 
 **SKIP** when: follow-up questions, confirmations, quick file ops, simple factual answers, single-step tasks.
 
+## Why It Works (Mechanism)
+
+**The rewind problem:** LLMs commit to a conclusion in their first tokens. Everything after is justification, not reasoning. Once committed, the model cannot rewind. The trace runs BEFORE the model's first token — it changes the starting position, not the reasoning quality. The model doesn't think better; it starts somewhere else.
+
+**The re-prompt loop:** When using the trace manually:
+1. The model reasons just enough to understand the shape of the problem (not the answer)
+2. It writes that shape as structural blocks
+3. The engine processes them deterministically in <100ms
+4. The trace re-prompts the model before it commits — different starting position, different path
+
+**Breaking prompt dependency:** Without the engine, AI output quality is capped by human prompt quality. The engine replaces human perception as the source of the model's starting conditions. The model is prompted by structure, not by human framing — uncontaminated by human bias or the model's own defaults.
+
 ## How to Use the Trace
 
 1. Describe the problem in natural language with signal words ("depends on", "blocks", "the CTO wants", "team of 4")

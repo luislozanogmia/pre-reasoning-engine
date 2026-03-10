@@ -31,31 +31,29 @@ Where:
   α     = 10pp (measured advantage at 9B vs own baseline)
 ```
 
-Validation against our data points:
+This fit is anchored at 9B (+10pp observed) and lands within our measured range at 120B (+21.8pp predicted vs. ~20-30pp observed). We treat this as a **provisional empirical fit**, not yet a validated scaling law.
 
 ```
-Advantage(9B)   = 10 × ln(9)/ln(9)       = 10.0pp  ✓ (measured: ~10pp)
-Advantage(120B) = 10 × ln(120)/ln(9)     = 21.8pp  ✓ (measured: ~20-30pp)
-Advantage(2T)   = 10 × ln(2000)/ln(9)    = 34.6pp
-Advantage(5T)   = 10 × ln(5000)/ln(9)    = 38.7pp
+Advantage(9B)   = 10 × ln(9)/ln(9)       = 10.0pp  (anchor point, by construction)
+Advantage(120B) = 10 × ln(120)/ln(9)     = 21.8pp  (within observed range of ~20-30pp)
+Advantage(2T)   = 10 × ln(2000)/ln(9)    = 34.6pp  (projection)
+Advantage(5T)   = 10 × ln(5000)/ln(9)    = 38.7pp  (projection)
 ```
 
-The effective parameter multiplier — how much "larger" a model behaves with a humanly-grounded trace:
+Separately, on our architectural-decision tasks, a traced 9B model was competitive with a 120B baseline, suggesting an **observed effective scale multiplier of roughly 13.5x in this regime**:
 
 ```
-Effective_Params(N) = N × e^(α × quality)
+Observed crossover: 9B + trace ≈ 120B baseline → ~13.5x multiplier
 
-Where quality ∈ {0.25, 0.50, 0.75, 1.0} maps to grounding levels:
-  grounding → enhancing → unlocking → humanly_grounded
-
-For humanly_grounded (quality=1.0), α ≈ 2.6:
-  Effective(9B)   =   9B × 13.5 =    121B   (matches: 9B+trace ≈ 120B)
-  Effective(120B) = 120B × 13.5 =  1,620B
+If this multiplier persists (unvalidated assumption):
+  Effective(9B)   =   9B × 13.5 =    121B
   Effective(2T)   =   2T × 13.5 =     27T
   Effective(5T)   =   5T × 13.5 =   67.5T
 ```
 
-No model at 27T or 67.5T effective parameters has ever been tested on structural reasoning tasks. These are parameter-equivalent scales that do not exist in the world today.
+**Important caveat:** The logarithmic advantage formula and the constant effective multiplier are two different models. The log formula predicts a growing additive advantage; a constant multiplier implies fixed scale translation. Both cannot be simultaneously exact across all scales. We present both as what they are: a provisional fit and an observed crossover equivalence in one regime, not jointly validated laws.
+
+Even the conservative reading is striking. No model at 27T effective parameters has ever been tested on structural reasoning tasks. These are parameter-equivalent scales that do not exist in the world today.
 
 ---
 

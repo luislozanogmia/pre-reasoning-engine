@@ -1,20 +1,26 @@
-# Your AI Already Knows the Answer. It Just Can't See It.
+# 👽 The Next Frontier Isn't Scale. It's Contact.
 
 *Karpathy said we're summoning ghosts. He was half right. We're summoning ghosts that are haunted by their own knowledge.*
 
 ---
 
-A 9-billion parameter model beat a 120-billion parameter model on architectural decisions. Four wins, one tie, zero losses.
+## What We Built
 
-The small model had no extra training. No fine-tuning. No retrieval augmentation. No extra data. It received a structural trace — a dependency graph computed in 80 milliseconds by an engine with zero learnable parameters.
+We built a pre-reasoning engine. Zero parameters. No neural network. Pure algorithm — dependency extraction, conflict detection, circular blocker analysis, graph-based resolution sequencing. It reads a problem described in plain text and computes a structural trace: what blocks what, what must be resolved first, what can proceed in parallel, where stakeholders conflict.
 
-The 120-billion parameter model had everything: 13 times more parameters, orders of magnitude more training compute, access to the same problem description. It lost because it couldn't see what it already knew.
+It runs in under 100 milliseconds. It's deterministic — same input, same output, every time. It's model-agnostic — the trace it produces is the same whether the downstream model is 9 billion parameters or 5 trillion.
+
+We didn't build it to replace AI reasoning. We built it to give AI something it doesn't have: structural perception. The ability to SEE the dependency graph of a problem before deciding what to do about it.
+
+Then we tested it.
 
 ---
 
 ## The Data
 
-We ran 15 head-to-head comparisons on real architectural decision problems — the kind of messy, multi-stakeholder, ambiguous questions that founders, CTOs, and engineering leads face every week. Migration decisions. Scaling trade-offs. Team constraint problems.
+We ran hundreds of tests, but 15 very focused, head-to-head comparisons on real architectural decision problems: the kind of messy, multi-stakeholder, ambiguous questions that founders, CTOs, and engineering leads face every week. Migration decisions. Scaling trade-offs. Team constraint problems.
+
+The results show that adding a trace consistently boosts performance across very different model sizes. A 9B model with trace beats a 32B baseline despite running at only 0.28x the parameters, finishing with 3 wins, 2 ties, and no losses for an 80% win rate. Against a much larger 120B baseline, the same 9B traced model operates at just 0.075x the size yet delivers 4 wins, 1 tie, and no losses, reaching a 90% win rate. Even at the high end, a 120B model with trace matches its non-trace counterpart at 1.0x the parameters and still posts 3 wins, 2 ties, and no losses, again landing at an 80% win rate.
 
 | Enhanced (with trace) | Baseline (no trace) | Param ratio | Record | Win % |
 |---|---|---|---|---|
@@ -44,24 +50,17 @@ The model didn't learn something new. It *remembered* something it had forgotten
 
 ## The Formula
 
-The trace advantage follows a logarithmic scaling law with model parameters:
+A simple logarithmic fit is consistent with our current observations:
 
 ```
-Advantage(N) = 10 × ln(N / 1B) / ln(9)
+Advantage(N) = 10 × ln(N) / ln(9)
 ```
 
-Where N is parameters in billions. Validating against our data:
+where N is model size in billions of parameters, and advantage is measured in percentage points relative to baseline. The fit is anchored at 9B (+10pp observed) and lands within our current measured range at 120B (+21.8pp predicted vs. ~20-30pp observed).
 
-- Advantage(9B) = 10.0 percentage points *(measured: ~10pp)*
-- Advantage(120B) = 21.8 percentage points *(measured: ~20-30pp)*
+We treat this as a provisional empirical fit, not a validated scaling law. Two data points and a curve that passes near them is a hypothesis, not a proof. But it is a hypothesis with a testable prediction.
 
-The effective parameter multiplier — how much "larger" a model behaves when given a high-quality structural trace:
-
-```
-Effective(N) = N × 13.5
-```
-
-A 9B model with a trace operates like a 121B model. The math matches our observations exactly. A 9B model with a trace beat a 120B model without one.
+Separately, on our architectural-decision tasks, a traced 9B model was competitive with a 120B baseline, suggesting an **observed effective scale multiplier of roughly 13.5x in this regime**. In other words, a 9B model with a trace behaved like a ~120B model on these tasks. We do not yet know whether that multiplier remains constant across scales.
 
 This is where it gets uncomfortable.
 
@@ -71,16 +70,21 @@ This is where it gets uncomfortable.
 
 Frontier models today are estimated between 2 and 5 trillion parameters. Claude Opus 4.6 — the model I work with daily — is confirmed to use a dense architecture, meaning every parameter is active on every token. Not a mixture-of-experts where only a fraction fires. All of it. Every time.
 
-Extending the formula:
+If the logarithmic fit holds — and we stress *if* — extending it gives:
 
 - Advantage(2T) = 34.6 percentage points
 - Advantage(5T) = 38.7 percentage points
-- Effective(2T) = 27 trillion effective parameters
-- Effective(5T) = 67.5 trillion effective parameters
 
-No model at 27T or 67.5T effective parameters has ever been evaluated on any benchmark. These scales don't exist. Not because no one has trained a model that large — but because no one has given a 2-5T model the structural perception to access what it already contains.
+If the 13.5x effective multiplier observed at 9B→120B persists at larger scales — which is a separate and unvalidated assumption — then:
 
-We have zero data points above 120B.
+- Effective(2T) = ~27 trillion effective parameters
+- Effective(5T) = ~67.5 trillion effective parameters
+
+These are projections from a sparse dataset, not established facts. The logarithmic fit and the constant multiplier are two different models, and presenting both is an act of intellectual honesty about what we've seen, not a claim about what must be true.
+
+But even the conservative reading is striking. No model at 27T effective parameters has ever been evaluated on any benchmark. These scales don't exist. Not because no one has trained a model that large — but because no one has given a 2-5T model the structural perception to access what it already contains.
+
+We have zero data points above 120B. That's the point.
 
 ---
 
