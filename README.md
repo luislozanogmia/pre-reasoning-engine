@@ -70,6 +70,8 @@ Connect any MCP-compatible client to the Streamable HTTP endpoint:
 URL: https://www.mia-labs.com/api/engine/mcp
 ```
 
+> **Note:** Claude.ai and some AI connectors cannot reach `www.mia-labs.com` through Cloudflare. If you get "Couldn't reach the MCP server", use the direct Replit URL instead: `https://mia-labs-landing.replit.app/api/engine/mcp`. ChatGPT, coding agents (Claude Code, Cursor, Windsurf), and direct API calls work fine with `mia-labs.com`.
+
 **Claude Web** — go to Settings > Connectors > Add Custom Connector:
 ```
 Name: Mia Labs Pre-Reasoning Engine

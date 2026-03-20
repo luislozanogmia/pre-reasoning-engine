@@ -6,6 +6,8 @@ Connect the Mia Labs Pre-Reasoning Engine to any MCP-compatible AI client.
 
 The engine is hosted at `https://www.mia-labs.com/api/engine/mcp` and supports MCP Streamable HTTP transport.
 
+> **Note:** Claude.ai and some AI connectors cannot reach `www.mia-labs.com` through Cloudflare. If you get "Couldn't reach the MCP server", use the direct Replit URL instead: `https://mia-labs-landing.replit.app/api/engine/mcp`. ChatGPT, coding agents (Claude Code, Cursor, Windsurf), and direct API calls work fine with `mia-labs.com`.
+
 ### Claude Web (Settings > Connectors)
 
 1. Go to Settings > Connectors > Add Custom Connector
