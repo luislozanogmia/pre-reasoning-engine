@@ -24,13 +24,17 @@ import urllib.parse
 
 API = "https://www.mia-labs.com/api/engine"
 TIMEOUT = 30
+DEFAULT_HEADERS = {
+    "User-Agent": "MiaLabsPreReasoningCLI/1.0",
+    "Accept": "application/json",
+}
 
 
 def _get(endpoint):
     """GET request to engine API."""
     url = f"{API}/{endpoint}"
     try:
-        req = urllib.request.Request(url)
+        req = urllib.request.Request(url, headers=DEFAULT_HEADERS)
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
@@ -47,8 +51,9 @@ def _post(endpoint, data):
     url = f"{API}/{endpoint}"
     try:
         payload = json.dumps(data).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, method="POST")
-        req.add_header("Content-Type", "application/json")
+        headers = dict(DEFAULT_HEADERS)
+        headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(url, data=payload, method="POST", headers=headers)
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:

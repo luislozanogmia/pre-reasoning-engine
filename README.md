@@ -95,6 +95,8 @@ URL: https://www.mia-labs.com/api/engine/mcp
 claude mcp add --transport http mia-pre-reasoning https://www.mia-labs.com/api/engine/mcp
 ```
 
+> **Note:** The CLI sends explicit HTTP headers (`User-Agent`, `Accept`) for Cloudflare compatibility. If you fork the client, preserve these headers or requests may be blocked with a 403.
+
 ### Option 3: Claude Code Skill
 
 Copy the [skill/](skill/) directory to `~/.claude/skills/pre-reasoning/` and add to your CLAUDE.md:
