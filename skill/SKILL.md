@@ -76,7 +76,17 @@ Base URL: `https://www.mia-labs.com/api/engine`
 4. Computes: root blockers, unlock sequence, parallel work, conflicts
 5. Returns a trace that ANY model uses to reason better
 
-The trace doesn't add knowledge — it prevents drift. It keeps the model on the structural path.
+The trace doesn't add knowledge -- it prevents drift. It keeps the model on the structural path.
+
+## Auto-Enhancement Loop
+
+`/api/engine/analyze` has a server-side enhancement loop that runs automatically:
+
+- **Shallow input** (`grounding_level: "grounding"` on first pass) -- server calls `llama-3.1-8b-instant` via Groq to reformulate the text with signal words, then re-submits to the engine (max 2 iterations)
+- **Already-structured input** (first pass above `"grounding"`) -- loop never fires, trace returned as-is, zero overhead
+- Applies to all callers: API, MCP, widget, playground -- no changes needed on the caller side
+- The form grammar is baked into the enhancement prompt internally, so you don't need to study signal words to get richer traces from short inputs
+- To opt out: pass header `X-Skip-Prereasonig: true`
 
 ## Using the Trace
 

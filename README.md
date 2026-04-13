@@ -16,7 +16,9 @@ You describe an ambiguous problem in plain text. The pre-reasoning engine analyz
 - **CONFLICTS** — competing positions that need resolution
 - **CIRCULAR DEPENDENCIES** — deadlocks detected via Tarjan's SCC
 
-The engine uses **zero ML parameters**. It's pure algorithm — deterministic, fast (<100ms), and model-agnostic. When it finds enough structure, it reports the trace as **Humanly Grounded** — the full structural picture a human expert would surface.
+The engine uses **zero ML parameters** for the core algorithm — deterministic, fast (<100ms), and model-agnostic. When it finds enough structure, it reports the trace as **Humanly Grounded** — the full structural picture a human expert would surface.
+
+**Auto-Enhancement Loop:** The hosted `/api/engine/analyze` endpoint includes a server-side enhancement loop. Short or conversational inputs that return a shallow trace (`grounding_level: "grounding"`) are automatically reformulated using `llama-3.1-8b-instant` via Groq and re-analyzed (max 2 iterations). Already-structured inputs bypass this entirely -- zero overhead. All callers (API, MCP, widget) benefit without any code changes. To opt out, pass `X-Skip-Prereasonig: true`.
 
 ## Why It Works
 
