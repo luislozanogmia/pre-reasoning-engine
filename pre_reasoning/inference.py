@@ -534,6 +534,82 @@ class V4ReasoningModel(nn.Module):
             return logits, new_kvs
         return logits
 
+    # ── Fast incremental step (opt/cpu-inference fork) ───────────────────
+    # Same tensor ops, shapes and dtypes as forward(use_cache=True) on a
+    # single token, but expressed functionally: no nn.Module dispatch, no
+    # eval-mode Dropout calls, no mask branch. Pure torch — bitwise-equal
+    # output is enforced by the reference-equivalence suite.
+
+    def _fast_layers(self):
+        cached = getattr(self, "_fast_layer_params", None)
+        if cached is not None:
+            return cached
+        layers = []
+        for blk in list(self.backbone) + list(self.expert_blocks) + list(self.fusion):
+            a = blk.attn
+            entry = {
+                "ln1_w": blk.ln1.weight, "ln1_b": blk.ln1.bias,
+                "qkv_w": a.qkv.weight, "qkv_b": a.qkv.bias,
+                "proj_w": a.proj.weight, "proj_b": a.proj.bias,
+                "ln2_w": blk.ln2.weight, "ln2_b": blk.ln2.bias,
+                "scale": a.d_head ** -0.5,
+            }
+            if isinstance(blk, ExpertBlock):
+                entry["experts"] = [
+                    (e[0].weight, e[0].bias, e[2].weight, e[2].bias)
+                    for e in blk.experts
+                ]
+            else:
+                ff = blk.ff
+                entry["ff"] = (ff[0].weight, ff[0].bias, ff[2].weight, ff[2].bias)
+            layers.append(entry)
+        self._fast_layer_params = layers
+        return layers
+
+    def _fast_step(self, next_token: torch.Tensor, fam: int, past_kvs: list):
+        """One incremental decode step. next_token: (1,1) long. Returns
+        (last-position logits (1, vocab), updated kv list)."""
+        layers = self._fast_layers()
+        C = self.d_model
+        nh, dh = self.n_heads, C // self.n_heads
+        past_len = past_kvs[0][0].shape[2]
+
+        h = self.tok_emb.weight[next_token] + self.pos_emb.weight[past_len]
+        if fam is not None:
+            h = h + self.family_type_emb.weight[fam]
+
+        expert_id = FAMILY_EXPERT_MAP.get(fam, 0) if fam is not None else 0
+        new_kvs = []
+        for i, L in enumerate(layers):
+            xn = F.layer_norm(h, (C,), L["ln1_w"], L["ln1_b"], 1e-5)
+            qkv = F.linear(xn, L["qkv_w"], L["qkv_b"]).reshape(1, 1, 3, nh, dh)
+            qkv = qkv.permute(2, 0, 3, 1, 4)
+            q, k, v = qkv[0], qkv[1], qkv[2]
+            pk, pv = past_kvs[i]
+            k = torch.cat([pk, k], dim=2)
+            v = torch.cat([pv, v], dim=2)
+            att = (q @ k.transpose(-2, -1)) * L["scale"]
+            att = F.softmax(att, dim=-1)
+            y = (att @ v).transpose(1, 2).contiguous().reshape(1, 1, C)
+            h = h + F.linear(y, L["proj_w"], L["proj_b"])
+            new_kvs.append((k, v))
+
+            xn2 = F.layer_norm(h, (C,), L["ln2_w"], L["ln2_b"], 1e-5)
+            if "ff" in L:
+                w1, b1, w2, b2 = L["ff"]
+                h = h + F.linear(F.gelu(F.linear(xn2, w1, b1)), w2, b2)
+            else:
+                # Expert FFN runs on 2D input, exactly like x_normed[mask]
+                # in ExpertBlock.forward with a single all-true position.
+                w1, b1, w2, b2 = L["experts"][expert_id]
+                ei = xn2.reshape(1, C)
+                eo = F.linear(F.gelu(F.linear(ei, w1, b1)), w2, b2)
+                h = h + eo.reshape(1, 1, C)
+
+        h = F.layer_norm(h, (C,), self.ln_f.weight, self.ln_f.bias, 1e-5)
+        logits = F.linear(h, self.head.weight)
+        return logits[:, -1, :], new_kvs
+
     def count_parameters(self) -> int:
         seen = set()
         total = 0
@@ -558,7 +634,30 @@ class V4ReasoningModel(nn.Module):
                                        temperature=temperature,
                                        fixed_family=fixed_family)
 
-        idx = input_ids.clone()
+        # Scoped thread pin: single-token steps run fastest around 4
+        # threads (8+ oversubscribes tiny tensors). The caller's setting is
+        # restored on exit so other inference in the client process is
+        # never affected. Override with PRE_REASONING_THREADS (0 = leave
+        # threading untouched).
+        env_thr = os.environ.get("PRE_REASONING_THREADS")
+        target_threads = int(env_thr) if env_thr not in (None, "") else 4
+        prev_threads = torch.get_num_threads()
+        pin = target_threads > 0 and prev_threads != target_threads
+        if pin:
+            torch.set_num_threads(target_threads)
+        try:
+            with torch.inference_mode():
+                return self._generate_cached(input_ids, family_ids,
+                                             max_new_tokens, temperature,
+                                             fixed_family)
+        finally:
+            if pin:
+                torch.set_num_threads(prev_threads)
+
+    def _generate_cached(self, input_ids, family_ids, max_new_tokens,
+                         temperature, fixed_family):
+        idx = input_ids
+        new_tokens = []
         fids = family_ids.clone() if family_ids is not None else None
 
         _normalized_id = NORMALIZED_ID
@@ -569,6 +668,7 @@ class V4ReasoningModel(nn.Module):
         _root_blocker_id = ROOT_BLOCKER_ID
         _unlock_seq_id = TOKEN2ID.get("UNLOCK_SEQ")
         _conditionals_id = CONDITIONALS_ID
+        fast = os.environ.get("PRE_REASONING_NO_FASTSTEP") != "1"
 
         current_family = 0
 
@@ -586,10 +686,9 @@ class V4ReasoningModel(nn.Module):
             else:
                 probs = F.softmax(logits / temperature, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1)
-            idx = torch.cat([idx, next_token], dim=1)
+            new_tokens.append(next_token)
 
             tok_val = next_token.item()
-            fam_tensor = None
             if fids is not None:
                 if fixed_family is not None:
                     current_family = fixed_family
@@ -606,17 +705,25 @@ class V4ReasoningModel(nn.Module):
                         current_family = 4
                     elif tok_val == _root_blocker_id or tok_val == _unlock_seq_id:
                         current_family = 1
-                fam_tensor = torch.full((1, 1), current_family,
-                                        dtype=torch.long, device=idx.device)
 
             if tok_val == EOS_ID or step == max_new_tokens - 1:
                 break
 
             # Incremental step: feed only the new token against the cache.
-            logits, kvs = self.forward(next_token, fam_tensor,
-                                       past_kvs=kvs, use_cache=True)
-            logits = logits[:, -1, :]
-        return idx
+            step_family = current_family if fids is not None else None
+            if fast:
+                logits, kvs = self._fast_step(next_token, step_family, kvs)
+            else:
+                fam_tensor = None
+                if fids is not None:
+                    fam_tensor = torch.full((1, 1), current_family,
+                                            dtype=torch.long, device=idx.device)
+                logits, kvs = self.forward(next_token, fam_tensor,
+                                           past_kvs=kvs, use_cache=True)
+                logits = logits[:, -1, :]
+        if new_tokens:
+            return torch.cat([idx] + new_tokens, dim=1)
+        return idx.clone()
 
     @torch.no_grad()
     def _generate_full(self, input_ids: torch.Tensor, family_ids: torch.Tensor = None,
@@ -1514,7 +1621,18 @@ def _f5_pass(model, edges, device, max_window_calls=4000):
     nodes = {e for p in dep_edges for e in p}
     all_edges = set(dep_edges)
     derived = set()
-    cache = {}
+    # Canonical windows are deterministic (greedy decode, fixed weights),
+    # so signature->closure results are persisted on the model instance
+    # and shared across analyze() calls. Per-model, so a different
+    # checkpoint never sees another model's answers. Opt out with
+    # PRE_REASONING_NO_F5_CACHE=1.
+    if os.environ.get("PRE_REASONING_NO_F5_CACHE") == "1":
+        cache = {}
+    else:
+        cache = getattr(model, "_f5_sig_cache", None)
+        if cache is None:
+            cache = {}
+            model._f5_sig_cache = cache
     calls = 0
     for _ in range(max(1, len(nodes))):
         adj = defaultdict(set)

@@ -1,5 +1,31 @@
 # Changelog
 
+## v3.1.0 (unreleased — opt/cpu-inference branch)
+
+CPU inference is 4-6x faster. No API changes, no new dependencies, identical
+outputs (verified byte-identical on a 12-prompt reference suite). All
+optimizations are pure PyTorch and process-safe: nothing global is modified,
+so other models running in the same client process are unaffected.
+
+- KV cache in `generate()`: the prompt is encoded once, then each new token
+  runs a single incremental step instead of re-processing the full sequence.
+  Long-sequence fallback to the original loop is automatic (> max_seq_len).
+- Functional fast path for incremental steps (same tensor ops without
+  nn.Module dispatch overhead) under `torch.inference_mode()`.
+- Scoped thread pinning: single-token steps run at 4 threads during
+  `generate()` only; the caller's `torch.get_num_threads()` setting is
+  saved and restored, never changed globally.
+- Engine singleton: `get_engine()`/`analyze()` reuse one engine per
+  (checkpoint, device) instead of reloading the checkpoint each call.
+- Persistent E4 closure-window cache: canonical 2-hop windows are
+  deterministic (greedy decode, fixed weights), so results are memoized on
+  the model instance across calls.
+- Escape hatches (env vars, all default-off): `PRE_REASONING_DISABLE_KV=1`
+  (original generate loop), `PRE_REASONING_NO_FASTSTEP=1` (module-based
+  incremental steps), `PRE_REASONING_THREADS=N` (thread pin override, 0 =
+  never touch threading), `PRE_REASONING_NO_ENGINE_CACHE=1` (rebuild engine
+  per call), `PRE_REASONING_NO_F5_CACHE=1` (per-pass closure cache only).
+
 ## v3.0.0
 
 - Upgraded to 13.7M trainable parameter MoE model (v4, 5 expert groups) as the standalone engine.
