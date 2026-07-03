@@ -333,17 +333,25 @@ class CausalSelfAttention(nn.Module):
             torch.tril(torch.ones(max_len, max_len)).unsqueeze(0).unsqueeze(0),
         )
 
-    def forward(self, x):
+    def forward(self, x, past_kv=None, use_cache=False):
         B, T, C = x.shape
         qkv = self.qkv(x).reshape(B, T, 3, self.n_heads, self.d_head)
         qkv = qkv.permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
+        if past_kv is not None:
+            k = torch.cat([past_kv[0], k], dim=2)
+            v = torch.cat([past_kv[1], v], dim=2)
         att = (q @ k.transpose(-2, -1)) * (self.d_head ** -0.5)
-        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
+        S = k.shape[2]
+        if T > 1:
+            att = att.masked_fill(self.mask[:, :, S - T:S, :S] == 0, float("-inf"))
         att = F.softmax(att, dim=-1)
         att = self.dropout(att)
         y = (att @ v).transpose(1, 2).contiguous().reshape(B, T, C)
-        return self.proj(y)
+        y = self.proj(y)
+        if use_cache:
+            return y, (k, v)
+        return y
 
 
 class TransformerBlock(nn.Module):
@@ -359,8 +367,13 @@ class TransformerBlock(nn.Module):
             nn.Dropout(dropout),
         )
 
-    def forward(self, x):
-        x = x + self.attn(self.ln1(x))
+    def forward(self, x, past_kv=None, use_cache=False):
+        if use_cache:
+            a, kv = self.attn(self.ln1(x), past_kv=past_kv, use_cache=True)
+            x = x + a
+            x = x + self.ff(self.ln2(x))
+            return x, kv
+        x = x + self.attn(self.ln1(x), past_kv=past_kv)
         x = x + self.ff(self.ln2(x))
         return x
 
@@ -385,8 +398,14 @@ class ExpertBlock(nn.Module):
             for _ in range(n_experts)
         ])
 
-    def forward(self, x: torch.Tensor, expert_indices: torch.Tensor) -> torch.Tensor:
-        x = x + self.attn(self.ln1(x))
+    def forward(self, x: torch.Tensor, expert_indices: torch.Tensor,
+                past_kv=None, use_cache=False):
+        kv = None
+        if use_cache:
+            a, kv = self.attn(self.ln1(x), past_kv=past_kv, use_cache=True)
+            x = x + a
+        else:
+            x = x + self.attn(self.ln1(x), past_kv=past_kv)
         residual = x
         x_normed = self.ln2(x)
 
@@ -401,7 +420,10 @@ class ExpertBlock(nn.Module):
             expert_output = self.experts[expert_id](expert_input)
             output[mask] = expert_output.to(output.dtype)
 
-        return residual + output
+        out = residual + output
+        if use_cache:
+            return out, kv
+        return out
 
 
 class V4ReasoningModel(nn.Module):
@@ -463,17 +485,36 @@ class V4ReasoningModel(nn.Module):
             nn.init.ones_(module.weight)
             nn.init.zeros_(module.bias)
 
-    def forward(self, x: torch.Tensor, family_ids: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, family_ids: torch.Tensor = None,
+                past_kvs=None, use_cache=False):
         B, T = x.shape
-        pos = torch.arange(0, T, dtype=torch.long, device=x.device).unsqueeze(0)
+        past_len = past_kvs[0][0].shape[2] if past_kvs is not None else 0
+        pos = torch.arange(past_len, past_len + T, dtype=torch.long,
+                           device=x.device).unsqueeze(0)
 
         h = self.tok_emb(x) + self.pos_emb(pos)
         if family_ids is not None:
             h = h + self.family_type_emb(family_ids)
         h = self.drop(h)
 
+        new_kvs = [] if use_cache else None
+        layer_i = 0
+
+        def _run(block, h, *extra):
+            nonlocal layer_i
+            pkv = past_kvs[layer_i] if past_kvs is not None else None
+            if use_cache:
+                h, kv = block(h, *extra, past_kv=pkv, use_cache=True)
+                new_kvs.append(kv)
+            elif pkv is not None:
+                h = block(h, *extra, past_kv=pkv)
+            else:
+                h = block(h, *extra)
+            layer_i += 1
+            return h
+
         for block in self.backbone:
-            h = block(h)
+            h = _run(block, h)
 
         if family_ids is not None:
             expert_indices = torch.zeros(B, T, dtype=torch.long, device=x.device)
@@ -483,12 +524,14 @@ class V4ReasoningModel(nn.Module):
             expert_indices = torch.zeros(B, T, dtype=torch.long, device=x.device)
 
         for expert_block in self.expert_blocks:
-            h = expert_block(h, expert_indices)
+            h = _run(expert_block, h, expert_indices)
 
         for block in self.fusion:
-            h = block(h)
+            h = _run(block, h)
 
         logits = self.head(self.ln_f(h))
+        if use_cache:
+            return logits, new_kvs
         return logits
 
     def count_parameters(self) -> int:
@@ -504,6 +547,83 @@ class V4ReasoningModel(nn.Module):
     def generate(self, input_ids: torch.Tensor, family_ids: torch.Tensor = None,
                  max_new_tokens: int = 200, temperature: float = 0.0,
                  fixed_family: int = None) -> torch.Tensor:
+        """KV-cached generation (opt/cpu-inference fork). Falls back to the
+        original full-recompute loop when the sequence could exceed
+        max_seq_len or when PRE_REASONING_DISABLE_KV=1."""
+        self.eval()
+        if (os.environ.get("PRE_REASONING_DISABLE_KV") == "1"
+                or input_ids.shape[1] + max_new_tokens > self.max_seq_len):
+            return self._generate_full(input_ids, family_ids=family_ids,
+                                       max_new_tokens=max_new_tokens,
+                                       temperature=temperature,
+                                       fixed_family=fixed_family)
+
+        idx = input_ids.clone()
+        fids = family_ids.clone() if family_ids is not None else None
+
+        _normalized_id = NORMALIZED_ID
+        _conflicts_id = CONFLICTS_ID
+        _contradicts_id = TOKEN2ID.get("CONTRADICTS")
+        _requirements_id = REQUIREMENTS_ID
+        _cycle_nodes_id = TOKEN2ID.get("CYCLE_NODES")
+        _root_blocker_id = ROOT_BLOCKER_ID
+        _unlock_seq_id = TOKEN2ID.get("UNLOCK_SEQ")
+        _conditionals_id = CONDITIONALS_ID
+
+        current_family = 0
+
+        # Prime the cache with one full forward over the prompt.
+        logits, kvs = self.forward(idx, fids, use_cache=True)
+        logits = logits[:, -1, :]
+
+        for step in range(max_new_tokens):
+            for sid in INPUT_ONLY_SENTINEL_IDS:
+                if sid < logits.shape[-1]:
+                    logits[:, sid] = float('-inf')
+
+            if temperature == 0.0:
+                next_token = logits.argmax(dim=-1, keepdim=True)
+            else:
+                probs = F.softmax(logits / temperature, dim=-1)
+                next_token = torch.multinomial(probs, num_samples=1)
+            idx = torch.cat([idx, next_token], dim=1)
+
+            tok_val = next_token.item()
+            fam_tensor = None
+            if fids is not None:
+                if fixed_family is not None:
+                    current_family = fixed_family
+                else:
+                    if tok_val == _normalized_id:
+                        current_family = 1
+                    elif tok_val == _conflicts_id or tok_val == _contradicts_id:
+                        current_family = 2
+                    elif tok_val == _requirements_id:
+                        current_family = 3
+                    elif tok_val == _conditionals_id:
+                        current_family = 8
+                    elif tok_val == _cycle_nodes_id:
+                        current_family = 4
+                    elif tok_val == _root_blocker_id or tok_val == _unlock_seq_id:
+                        current_family = 1
+                fam_tensor = torch.full((1, 1), current_family,
+                                        dtype=torch.long, device=idx.device)
+
+            if tok_val == EOS_ID or step == max_new_tokens - 1:
+                break
+
+            # Incremental step: feed only the new token against the cache.
+            logits, kvs = self.forward(next_token, fam_tensor,
+                                       past_kvs=kvs, use_cache=True)
+            logits = logits[:, -1, :]
+        return idx
+
+    @torch.no_grad()
+    def _generate_full(self, input_ids: torch.Tensor, family_ids: torch.Tensor = None,
+                       max_new_tokens: int = 200, temperature: float = 0.0,
+                       fixed_family: int = None) -> torch.Tensor:
+        """Original pre-fork loop: full-sequence forward per token. Kept as
+        the reference implementation and long-sequence fallback."""
         self.eval()
         idx = input_ids.clone()
         fids = family_ids.clone() if family_ids is not None else None
