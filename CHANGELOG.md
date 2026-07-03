@@ -1,6 +1,6 @@
 # Changelog
 
-## v3.1.0 (unreleased — opt/cpu-inference branch)
+## v3.1.0
 
 CPU inference is 4-6x faster. No API changes, no new dependencies, identical
 outputs (verified byte-identical on a 12-prompt reference suite). All
