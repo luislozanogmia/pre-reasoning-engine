@@ -561,17 +561,19 @@ class ReasoningEngineV252(ReasoningEngineV25):
     # ── Info ──────────────────────────────────────────────────────────────────
 
     def engine_info(self) -> dict:
-        info = super().engine_info()
-        info["engine"] = "ReasoningEngineV252"
-        info["version"] = self.VERSION
-        info["closure_engine"] = self._probe_closure_engine()
-        return info
-
-    @staticmethod
-    def _probe_closure_engine() -> dict:
-        # Transitive closure is produced by the 13.7M model's dedicated E4
-        # expert (ReasoningEngineV3.derive_assumptions).
-        return {"engine": "13_7m_v4_E4", "nn": True, "bfs": False}
+        base = super().engine_info()
+        return {
+            "engine": "pre-reasoning",
+            "version": self.VERSION,
+            "mode": base.get("mode", "full"),
+            "neural_perception": "active",
+            "graph_reasoning": "active",
+            "model": base.get("v3_model"),
+            "params": base.get("v3_params"),
+            "checkpoint": base.get("v3_checkpoint"),
+            "device": base.get("v3_device"),
+            "closure": {"engine": "built-in E4 expert", "neural": True},
+        }
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
