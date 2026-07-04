@@ -36,7 +36,7 @@ CHECKPOINT_ENV = "PRE_REASONING_CHECKPOINT"
 class ReasoningEngineV25:
     """Neural perception + deterministic graph reasoning."""
 
-    VERSION = "3.0.0"
+    VERSION = "3.1.0"
 
     def __init__(self, checkpoint_path=None, device="auto"):
         self._v3 = None

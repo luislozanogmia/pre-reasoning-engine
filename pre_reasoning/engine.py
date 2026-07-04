@@ -58,7 +58,7 @@ class ReasoningEngineV252(ReasoningEngineV25):
     a silent replacement for it.
     """
 
-    VERSION = "3.0.0"
+    VERSION = "3.1.0"
 
     def __init__(self, checkpoint_path=None, device="auto"):
         super().__init__(checkpoint_path=checkpoint_path, device=device)
@@ -581,7 +581,7 @@ def main():
     import json
 
     parser = argparse.ArgumentParser(
-        description="Pre-Reasoning v3.0.0, 13.7M neural engine"
+        description="Pre-Reasoning v3.1.0, 13.7M neural engine"
     )
     parser.add_argument("text", nargs="?", help="Problem text to analyze")
     parser.add_argument("--checkpoint", type=str, default=None)
