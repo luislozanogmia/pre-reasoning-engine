@@ -125,4 +125,4 @@ MIT License. See `LICENSE`.
 
 ## Authors
 
-Luis Lozano and Dr. Shannon (Mia Labs' AI researcher)
+Luis Lozano
